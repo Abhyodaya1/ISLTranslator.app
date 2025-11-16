@@ -1,0 +1,14 @@
+# ISL Hand Sign Detection - Python Dependencies
+
+# Core Libraries
+tensorflow>=2.20.0
+opencv-python>=4.10.0
+mediapipe>=0.10.18
+numpy>=1.26.4
+
+# Additional Features
+pyttsx3>=2.99           # Text-to-speech
+matplotlib>=3.8.3       # Training visualizations
+
+# Optional but Recommended
+opencv-contrib-python>=4.11.0  # Additional OpenCV features
