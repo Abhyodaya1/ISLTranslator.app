@@ -114,21 +114,31 @@ Model/*.joblib
 Model/*.npz
 Model/*.npy
 
-# Dataset files
-Data/**
-!Data/.gitkeep
+# Binaries & archives
+*.exe
+*.dll
+*.so
+*.zip
+*.tar
+*.gz
+*.7z
 
-# Training outputs
-training_results.json
-training_run_metadata.json
-model_comparison_results.json
+# Dataset raw archives (keep structure)
+Data/raw/**
+!Data/raw/.gitkeep
 
-# Training outputs
-Model/training_history.png
+# Explicitly whitelist and track outputs/ folder
+!outputs/**
+!outputs/*
+!outputs/**/*
+
+# General image ignore (except Data and outputs)
 *.png
 *.jpg
 *.jpeg
-# But keep Data folder images
+!outputs/**
+!outputs/*
+!outputs/**/*
 !Data/**/*.jpg
 !Data/**/*.jpeg
 !Data/**/*.png

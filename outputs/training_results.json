@@ -1,0 +1,23 @@
+{
+  "start_time": "2026-04-06T11:49:44.455798",
+  "gpu_enabled": false,
+  "models": {
+    "MobileNetV2": {
+      "status": "failed",
+      "exit_code": 3221225477
+    },
+    "ResNet50": {
+      "status": "failed",
+      "exit_code": 3221225477
+    },
+    "EfficientNetB0": {
+      "status": "failed",
+      "exit_code": 3221225477
+    },
+    "Custom CNN": {
+      "status": "failed",
+      "exit_code": 3221225477
+    }
+  },
+  "end_time": "2026-04-06T11:49:44.864094"
+}

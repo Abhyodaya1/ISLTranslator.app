@@ -1,0 +1,32 @@
+{
+  "data_dir": "Data",
+  "image_size": 224,
+  "validation_split": 0.2,
+  "models": {
+    "MobileNetV2": {
+      "epochs": 6,
+      "train_samples": 7216,
+      "val_samples": 1796
+    },
+    "ResNet50": {
+      "epochs": 6,
+      "train_samples": 7216,
+      "val_samples": 1796
+    },
+    "EfficientNetB0": {
+      "epochs": 6,
+      "train_samples": 7216,
+      "val_samples": 1796
+    },
+    "VGCC": {
+      "epochs": 6,
+      "train_samples": 7216,
+      "val_samples": 1796
+    },
+    "Custom CNN": {
+      "epochs": 6,
+      "train_samples": 7216,
+      "val_samples": 1796
+    }
+  }
+}
