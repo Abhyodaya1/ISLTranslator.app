@@ -98,6 +98,31 @@ dist-ssr/
 # *.ckpt
 # *.caffemodel
 
+# ML artifacts (ignore by default)
+Model/*.h5
+Model/*.keras
+Model/*.hdf5
+Model/*.pb
+Model/*.tflite
+Model/*.onnx
+Model/*.ckpt
+Model/*.weights
+Model/*.pt
+Model/*.pth
+Model/*.pkl
+Model/*.joblib
+Model/*.npz
+Model/*.npy
+
+# Dataset files
+Data/**
+!Data/.gitkeep
+
+# Training outputs
+training_results.json
+training_run_metadata.json
+model_comparison_results.json
+
 # Training outputs
 Model/training_history.png
 *.png

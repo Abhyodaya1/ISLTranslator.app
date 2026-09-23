@@ -2,10 +2,119 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Camera, Zap, Globe, Shield, Smartphone, Users } from "lucide-react";
+import { Camera, Zap, Globe, Shield, Smartphone, Users, X, Loader2 } from "lucide-react";
 import arFeature from "@/assets/ar-feature.jpg";
+import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 const Translate = () => {
+  const navigate = useNavigate();
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [prediction, setPrediction] = useState<{
+    label: string;
+    confidence: number;
+    all_predictions?: Record<string, number>;
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const intervalRef = useRef<number | null>(null);
+
+  const API_URL = 'http://localhost:5000/api';
+
+  const startCamera = async () => {
+    try {
+      setError(null);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 1280, height: 720 }
+      });
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        streamRef.current = stream;
+        setIsTranslating(true);
+        
+        // Start prediction loop
+        intervalRef.current = window.setInterval(() => {
+          captureAndPredict();
+        }, 1000); // Predict every second
+      }
+    } catch (err) {
+      setError('Failed to access camera. Please allow camera permissions.');
+      console.error('Camera error:', err);
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    
+    setIsTranslating(false);
+    setPrediction(null);
+  };
+
+  const captureAndPredict = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.drawImage(video, 0, 0);
+    
+    // Convert canvas to base64
+    const imageData = canvas.toDataURL('image/jpeg', 0.8);
+    
+    try {
+      setIsLoading(true);
+      const response = await fetch(`${API_URL}/predict`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ image: imageData }),
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setPrediction({
+          label: result.label,
+          confidence: result.confidence,
+          all_predictions: result.all_predictions
+        });
+      } else {
+        setPrediction(null);
+      }
+    } catch (err) {
+      console.error('Prediction error:', err);
+      setError('Failed to connect to AI model. Make sure the server is running.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
   const features = [
     {
       icon: Camera,
@@ -91,7 +200,11 @@ const Translate = () => {
                 uses your camera to convert sign language gestures into text and speech in real-time.
               </p>
 
-              <Button size="lg" className="gradient-primary text-white shadow-glow hover:shadow-medium transition-smooth group">
+              <Button 
+                size="lg" 
+                className="gradient-primary text-white shadow-glow hover:shadow-medium transition-smooth group"
+                onClick={() => navigate('/ar-practice')}
+              >
                 <Camera className="mr-2 w-5 h-5" />
                 Launch AR Translator
               </Button>
@@ -187,7 +300,7 @@ const Translate = () => {
       </section>
 
       {/* Real-World Impact */}
-      <section className="py-20 bg-gradient-warm text-white">
+      <section className="py-20 bg-gradient-warm text-black">
         <div className="container mx-auto px-4">
           <div className="max-w-4xl mx-auto text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold mb-6">
@@ -202,7 +315,7 @@ const Translate = () => {
             {benefits.map((benefit, index) => (
               <Card 
                 key={index}
-                className="p-6 bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-white/20 transition-smooth"
+                className="p-6 bg-white/10 backdrop-blur-sm border-grey/20 text-black hover:bg-white/20 transition-smooth"
               >
                 <div className="text-4xl mb-4">{benefit.icon}</div>
                 <h3 className="text-xl font-bold mb-2">{benefit.title}</h3>
@@ -214,28 +327,11 @@ const Translate = () => {
       </section>
 
       {/* Call to Action */}
-      <section className="py-20">
-        <div className="container mx-auto px-4">
-          <Card className="p-12 md:p-16 text-center bg-gradient-to-br from-primary/10 to-secondary/10 border-border shadow-medium">
-            <Users className="w-16 h-16 text-primary mx-auto mb-6" />
-            <h2 className="text-4xl md:text-5xl font-bold mb-6 text-foreground">
-              Join Thousands Using AR Translation
-            </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-              Be part of the movement creating a truly inclusive India where communication 
-              barriers no longer exist.
-            </p>
-            <Button size="lg" className="gradient-primary text-white shadow-glow hover:shadow-medium transition-smooth">
-              <Camera className="mr-2 w-5 h-5" />
-              Start Translating Now
-            </Button>
-          </Card>
-        </div>
-      </section>
-
+    
       <Footer />
     </div>
   );
 };
 
 export default Translate;
+

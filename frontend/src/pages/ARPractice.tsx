@@ -2,9 +2,202 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Camera, CheckCircle, XCircle, Target, Zap, TrendingUp, Award } from "lucide-react";
+import { Camera, CheckCircle, XCircle, Target, Zap, TrendingUp, Award, Loader2, X } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
 
 const ARPractice = () => {
+  const [isPracticing, setIsPracticing] = useState(false);
+  const [prediction, setPrediction] = useState<{
+    label: string;
+    confidence: number;
+    all_predictions?: Record<string, number>;
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const intervalRef = useRef<number | null>(null);
+
+  const API_URL = 'http://localhost:5000/api';
+
+  const startCamera = async () => {
+    try {
+      setError(null);
+      console.log('🎥 ========== STARTING CAMERA ==========');
+      console.log('📍 Requesting camera access...');
+      
+      // Check if getUserMedia is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.error('❌ Camera API not supported');
+        setError('Camera API not supported in this browser. Please use a modern browser.');
+        return;
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user'
+        }
+      });
+      
+      console.log('✅ Camera access granted!');
+      console.log('📹 Stream:', stream);
+      console.log('📹 Video tracks:', stream.getVideoTracks());
+      
+      // Store stream first
+      streamRef.current = stream;
+      
+      // Set isPracticing to true to render the video element
+      setIsPracticing(true);
+      console.log('✅ isPracticing set to true - video element should render now');
+      
+      // Wait for next render cycle when video element exists
+      setTimeout(() => {
+        const video = videoRef.current;
+        
+        if (!video) {
+          console.error('❌ Video element not found after render!');
+          setError('Failed to initialize video element');
+          return;
+        }
+        
+        console.log('✅ Video element found!');
+        console.log('🔧 Setting srcObject on video element...');
+        video.srcObject = stream;
+        
+        // Wait for video to be ready and play it
+        const handleLoadedMetadata = async () => {
+          console.log('✅ Video metadata loaded');
+          console.log('📺 Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+          
+          try {
+            await video.play();
+            console.log('✅ Video playing successfully!');
+            
+            // Start prediction loop after video is playing
+            intervalRef.current = window.setInterval(() => {
+              captureAndPredict();
+            }, 1000); // Predict every second
+            console.log('✅ Prediction loop started (every 1 second)');
+            console.log('🎥 ========== CAMERA READY ==========');
+          } catch (err) {
+            console.error('❌ Error playing video:', err);
+            setError('Failed to play video stream.');
+          }
+        };
+        
+        video.addEventListener('loadedmetadata', handleLoadedMetadata);
+        
+        // Fallback: if loadedmetadata doesn't fire quickly, try to play anyway
+        setTimeout(() => {
+          if (video.readyState >= 2) {
+            console.log('⚡ Fallback: Video ready, attempting play...');
+            handleLoadedMetadata();
+          } else {
+            console.log('⏳ Video readyState:', video.readyState);
+          }
+        }, 1000);
+      }, 100); // Small delay to let React render the video element
+    } catch (err: any) {
+      console.error('Camera error:', err);
+      if (err.name === 'NotAllowedError') {
+        setError('Camera permission denied. Please allow camera access in your browser settings.');
+      } else if (err.name === 'NotFoundError') {
+        setError('No camera found. Please connect a camera and try again.');
+      } else if (err.name === 'NotReadableError') {
+        setError('Camera is already in use by another application.');
+      } else {
+        setError(`Failed to access camera: ${err.message}`);
+      }
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    
+    setIsPracticing(false);
+    setPrediction(null);
+  };
+
+  const captureAndPredict = async () => {
+    if (!videoRef.current || !canvasRef.current) {
+      console.warn('⚠️ Video or canvas ref not available');
+      return;
+    }
+    
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      console.warn('⚠️ Video not ready yet');
+      return;
+    }
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.drawImage(video, 0, 0);
+    console.log('📸 Frame captured:', canvas.width, 'x', canvas.height);
+    
+    // Convert canvas to base64
+    const imageData = canvas.toDataURL('image/jpeg', 0.8);
+    console.log('🖼️ Image converted to base64, length:', imageData.length);
+    
+    try {
+      setIsLoading(true);
+      console.log('📡 Sending to API:', API_URL + '/predict');
+      
+      const response = await fetch(`${API_URL}/predict`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ image: imageData }),
+      });
+      
+      console.log('📥 Response status:', response.status);
+      const result = await response.json();
+      console.log('📦 Result:', result);
+      
+      if (result.success) {
+        console.log('🎯 PREDICTION:', result.label, '(', (result.confidence * 100).toFixed(1), '% confidence)');
+        setPrediction({
+          label: result.label,
+          confidence: result.confidence,
+          all_predictions: result.all_predictions
+        });
+      } else {
+        console.log('⚠️ No prediction:', result.error || 'Unknown error');
+        setPrediction(null);
+      }
+    } catch (err) {
+      console.error('❌ Prediction error:', err);
+      setError('Failed to connect to AI model. Make sure the server is running.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
   const practiceModules = [
     {
       title: "Alphabets A-Z",
@@ -69,25 +262,77 @@ const ARPractice = () => {
           <div className="grid lg:grid-cols-3 gap-8 mb-12">
             {/* AR Camera View */}
             <Card className="lg:col-span-2 p-8 border-2 border-primary/30 bg-gradient-to-br from-primary/5 to-transparent">
-              <div className="relative aspect-video bg-gradient-to-br from-muted/50 to-muted rounded-xl border-2 border-border mb-6 flex items-center justify-center">
-                <div className="text-center">
-                  <Camera className="w-20 h-20 text-primary mx-auto mb-4 animate-pulse" />
-                  <p className="text-lg font-bold text-foreground mb-2">Camera View</p>
-                  <p className="text-sm text-muted-foreground">Click "Start Practice" to begin</p>
-                </div>
-                
-                {/* AR Overlay Elements */}
-                <div className="absolute inset-4 border-2 border-primary/30 rounded-lg pointer-events-none"></div>
-                <div className="absolute top-4 left-4 bg-background/90 px-3 py-2 rounded-lg">
-                  <p className="text-xs text-muted-foreground">Sign: <span className="font-bold text-foreground">Hello</span></p>
-                </div>
+              <div className="relative aspect-video bg-black rounded-xl border-2 border-border mb-6 flex items-center justify-center overflow-hidden">
+                {isPracticing ? (
+                  <>
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full h-full object-cover rounded-lg"
+                    />
+                    <canvas ref={canvasRef} className="hidden" />
+                    
+                    {/* Loading Indicator */}
+                    {isLoading && (
+                      <div className="absolute top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-full flex items-center gap-2 shadow-lg">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span className="text-sm font-medium">Processing...</span>
+                      </div>
+                    )}
+                    
+                    {/* AR Frame Overlay */}
+                    <div className="absolute inset-4 border-2 border-primary/50 rounded-lg pointer-events-none"></div>
+                    
+                    {/* Prediction Display at Bottom */}
+                    {prediction && (
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/80 to-transparent px-6 py-6 pb-8">
+                        <div className="text-center">
+                          <p className="text-sm text-gray-300 mb-2">Detected Sign</p>
+                          <p className="text-5xl font-bold text-white mb-2">{prediction.label}</p>
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="h-1.5 bg-gray-700 rounded-full w-32 overflow-hidden">
+                              <div 
+                                className="h-full bg-gradient-to-r from-green-400 to-green-500 transition-all duration-300"
+                                style={{ width: `${prediction.confidence * 100}%` }}
+                              />
+                            </div>
+                            <span className="text-sm font-semibold text-green-400">
+                              {(prediction.confidence * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center">
+                    <Camera className="w-20 h-20 text-primary mx-auto mb-4 animate-pulse" />
+                    <p className="text-lg font-bold text-foreground mb-2">Camera View</p>
+                    <p className="text-sm text-muted-foreground">Click "Start Practice" to begin</p>
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-4">
-                <Button className="flex-1 gradient-primary text-white shadow-glow hover:shadow-medium transition-smooth">
-                  <Camera className="w-5 h-5 mr-2" />
-                  Start Practice
-                </Button>
+                {isPracticing ? (
+                  <Button 
+                    className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                    onClick={stopCamera}
+                  >
+                    <X className="w-5 h-5 mr-2" />
+                    Stop Practice
+                  </Button>
+                ) : (
+                  <Button 
+                    className="flex-1 gradient-primary text-white shadow-glow hover:shadow-medium transition-smooth"
+                    onClick={startCamera}
+                  >
+                    <Camera className="w-5 h-5 mr-2" />
+                    Start Practice
+                  </Button>
+                )}
                 <Button variant="outline" className="flex-1">
                   <Target className="w-5 h-5 mr-2" />
                   View Instructions
@@ -103,26 +348,75 @@ const ARPractice = () => {
               </h3>
               
               <div className="space-y-4">
-                {feedbackExamples.map((feedback, index) => {
-                  const Icon = feedback.icon;
-                  return (
-                    <div key={index} className={`p-4 rounded-xl border-2 ${
-                      feedback.type === 'correct' ? 'border-green-500/30 bg-green-500/5' :
-                      feedback.type === 'tip' ? 'border-primary/30 bg-primary/5' :
-                      'border-destructive/30 bg-destructive/5'
-                    }`}>
+                {prediction ? (
+                  <>
+                    <div className="p-4 rounded-xl border-2 border-green-500/30 bg-green-500/5">
                       <div className="flex items-start gap-3">
-                        <Icon className={`w-5 h-5 ${feedback.color} flex-shrink-0 mt-0.5`} />
-                        <p className="text-sm text-foreground">{feedback.message}</p>
+                        <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-bold text-foreground mb-1">Detected: {prediction.label}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Confidence: {(prediction.confidence * 100).toFixed(1)}%
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  );
-                })}
+                    
+                    {prediction.all_predictions && (
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-semibold text-muted-foreground">All Predictions:</h4>
+                        {Object.entries(prediction.all_predictions)
+                          .sort(([, a], [, b]) => b - a)
+                          .slice(0, 5)
+                          .map(([label, conf]) => (
+                            <div key={label} className="flex items-center justify-between text-sm">
+                              <span className="text-foreground">{label}</span>
+                              <div className="flex items-center gap-2">
+                                <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-primary"
+                                    style={{ width: `${conf * 100}%` }}
+                                  />
+                                </div>
+                                <span className="text-muted-foreground w-12 text-right">
+                                  {(conf * 100).toFixed(0)}%
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {feedbackExamples.map((feedback, index) => {
+                      const Icon = feedback.icon;
+                      return (
+                        <div key={index} className={`p-4 rounded-xl border-2 ${
+                          feedback.type === 'correct' ? 'border-green-500/30 bg-green-500/5' :
+                          feedback.type === 'tip' ? 'border-primary/30 bg-primary/5' :
+                          'border-destructive/30 bg-destructive/5'
+                        }`}>
+                          <div className="flex items-start gap-3">
+                            <Icon className={`w-5 h-5 ${feedback.color} flex-shrink-0 mt-0.5`} />
+                            <p className="text-sm text-foreground">{feedback.message}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+
+                {error && (
+                  <div className="p-4 rounded-xl border-2 border-red-500/30 bg-red-500/5">
+                    <p className="text-sm text-red-700 font-semibold">{error}</p>
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 p-4 bg-accent/10 rounded-xl">
                 <p className="text-sm font-medium text-center text-accent">
-                  Practice more to unlock detailed analysis!
+                  {isPracticing ? 'Keep practicing for better accuracy!' : 'Start practice to get live feedback!'}
                 </p>
               </div>
             </Card>

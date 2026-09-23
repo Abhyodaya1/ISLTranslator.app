@@ -43,45 +43,31 @@ class HandSignDetector:
             min_tracking_confidence=0.7
         )
         
-        # Load TensorFlow model with custom objects for compatibility
+        # Load TensorFlow model with TensorFlow 2.20 compatibility
         try:
-            # Try loading with safe mode disabled for legacy models
+            import tensorflow as tf
+            # Disable XLA for compatibility with TF 2.20
+            tf.config.optimizer.set_jit(False)
+            
             self.model = keras.models.load_model(
                 model_path,
-                compile=False,  # Don't compile, we'll do it manually
-                safe_mode=False  # Allow loading legacy models
+                compile=False,
+                safe_mode=False
             )
-            # Recompile the model
+            # Recompile with eager execution
             self.model.compile(
                 optimizer='adam',
                 loss='categorical_crossentropy',
-                metrics=['accuracy']
+                metrics=['accuracy'],
+                run_eagerly=True  # Use eager execution for TF 2.20 stability
             )
             print(f"✅ Model loaded successfully from {model_path}")
+            print(f"   Classes: {self.model.output_shape[-1]}")
         except Exception as e:
-            print(f"❌ Error loading model: {e}")
-            print("⚠️  Model has compatibility issues. Let me try alternative loading...")
-            
-            # Alternative: Try loading without custom objects
-            try:
-                import tensorflow as tf
-                self.model = tf.keras.models.load_model(
-                    model_path,
-                    custom_objects=None,
-                    compile=False,
-                    safe_mode=False
-                )
-                self.model.compile(
-                    optimizer='adam',
-                    loss='categorical_crossentropy',
-                    metrics=['accuracy']
-                )
-                print(f"✅ Model loaded successfully (compatibility mode)")
-            except Exception as e2:
-                print(f"❌ Failed to load model: {e2}")
-                print("\n💡 Solution: Please retrain the model using train_improved.py")
-                print("   This will create a model compatible with TensorFlow 2.20")
-                exit()
+            print(f"❌ Failed to load model: {e}")
+            print("\n💡 Solution: The model may be incompatible with TensorFlow 2.20")
+            print("   Please retrain using: python train_simple.py")
+            exit()
         
         # Load labels
         try:
